@@ -1,10 +1,17 @@
 use std::env;
-use serenity::{async_trait, model::{gateway::Ready, interactions::{
+use serenity::{
+    prelude::*,
+    utils::MessageBuilder,
+    model::{
+        gateway::Ready,
+        interactions::{
             Interaction,
             ApplicationCommandInteractionDataOptionValue as OptionValue,
             // ApplicationCommandOptionType as OptionType,
             // ApplicationCommand as AppCmd,
-        }, prelude::CurrentUser}, prelude::*, utils::MessageBuilder};
+        },
+    },
+};
 
 struct Handler;
 
@@ -33,7 +40,7 @@ macro_rules! cry {
     }
 }
 
-#[async_trait]
+#[serenity::async_trait]
 impl EventHandler for Handler {
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         let guild = fry!(&interaction.guild_id);
@@ -62,7 +69,7 @@ impl EventHandler for Handler {
             cry!(ctx.clone(), &interaction, Err(msg));
         }
 
-        if user.id == CurrentUser::default().id {
+        if user.id == ctx.cache.current_user_id().await {
             let edit_result = guild.edit_nickname(&ctx.http, Some(nick)).await;
             cry!(ctx.clone(), &interaction, edit_result);
         } else {

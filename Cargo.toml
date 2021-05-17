@@ -9,7 +9,10 @@ version = "1.0.40"
 [dependencies.serenity]
 version = "0.10.7"
 default-features = false
-features = ["client", "gateway", "rustls_backend", "model", "unstable_discord_api"]
+features = [
+    "client", "gateway", "rustls_backend", "model", "unstable_discord_api",
+    "cache",
+]
 
 [dependencies.tokio]
 version = "1.6.0"
