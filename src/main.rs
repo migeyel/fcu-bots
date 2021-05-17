@@ -71,7 +71,7 @@ impl EventHandler for Handler {
 
         let response = MessageBuilder::new()
             .push_mono_safe(user.tag())
-            .push(" ")
+            .push("  ")
             .push_mono_safe(old_nick)
             .push(" → ")
             .push_mono_safe(nick)
