@@ -1,13 +1,10 @@
 use std::env;
-use serenity::{async_trait, model::{
-        gateway::Ready,
-        interactions::{
+use serenity::{async_trait, model::{gateway::Ready, interactions::{
             Interaction,
             ApplicationCommandInteractionDataOptionValue as OptionValue,
             // ApplicationCommandOptionType as OptionType,
             // ApplicationCommand as AppCmd,
-        },
-    }, prelude::*, utils::MessageBuilder};
+        }, prelude::CurrentUser}, prelude::*, utils::MessageBuilder};
 
 struct Handler;
 
@@ -65,9 +62,15 @@ impl EventHandler for Handler {
             cry!(ctx.clone(), &interaction, Err(msg));
         }
 
-        let edit_result =
-            guild.edit_member(&ctx.http, user, |mem| mem.nickname(nick)).await;
-        cry!(ctx.clone(), &interaction, edit_result);
+        if user.id == CurrentUser::default().id {
+            let edit_result = guild.edit_nickname(&ctx.http, Some(nick)).await;
+            cry!(ctx.clone(), &interaction, edit_result);
+        } else {
+            let edit_result = guild
+                .edit_member(&ctx.http, user, |mem| mem.nickname(nick))
+                .await;
+            cry!(ctx.clone(), &interaction, edit_result);
+        }
 
         let response = MessageBuilder::new()
             .push_mono_safe(user.tag())
