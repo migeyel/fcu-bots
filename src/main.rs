@@ -1,7 +1,5 @@
 use std::env;
-use serenity::{
-    async_trait,
-    model::{
+use serenity::{async_trait, model::{
         gateway::Ready,
         interactions::{
             Interaction,
@@ -9,9 +7,7 @@ use serenity::{
             // ApplicationCommandOptionType as OptionType,
             // ApplicationCommand as AppCmd,
         },
-    },
-    prelude::*,
-};
+    }, prelude::*, utils::MessageBuilder};
 
 struct Handler;
 
@@ -20,6 +16,22 @@ macro_rules! fry {
         match $e {
             Some(v) => v,
             None => return,
+        }
+    }
+}
+
+macro_rules! cry {
+    ($ctx: expr, $int: expr, $e: expr) => {
+        match $e {
+            Ok(v) => v,
+            Err(e) => {
+                $int.create_interaction_response($ctx.http, |res| res
+                        .interaction_response_data(|msg| msg
+                            .content(format!("Error: {}", e))))
+                    .await
+                    .ok();
+                return;
+            }
         }
     }
 }
@@ -44,15 +56,21 @@ impl EventHandler for Handler {
             _ => return,
         };
 
-        let nick_res = guild.edit_member(&ctx.http, user, |mem| mem
-                .nickname(nick))
-            .await;
+        let member = guild.member(&ctx.http, user).await;
+        let member = cry!(ctx.clone(), &interaction, member);
+        let old_nick = &member.nick.unwrap_or(member.user.name);
 
-        let response = match nick_res {
-            Ok(_) => String::from("Bodia!"),
-            Err(e) => e.to_string(),
-        };
-        
+        let edit_result =
+            guild.edit_member(&ctx.http, user, |mem| mem.nickname(nick)).await;
+        cry!(ctx.clone(), &interaction, edit_result);
+
+        let response = MessageBuilder::new()
+            .push_mono_safe(user.tag())
+            .push(" ")
+            .push_mono_safe(old_nick)
+            .push(" → ")
+            .push_mono_safe(nick)
+            .build();
         interaction.create_interaction_response(&ctx.http, |res| res
                 .interaction_response_data(|msg| msg
                     .content(&response)))
