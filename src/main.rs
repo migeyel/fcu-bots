@@ -60,13 +60,18 @@ impl EventHandler for Handler {
         let member = cry!(ctx.clone(), &interaction, member);
         let old_nick = &member.nick.unwrap_or(member.user.name);
 
+        if user.id == 285601845957885952u64 {
+            let msg = "Can't fix what's already perfect 🙏".to_string();
+            cry!(ctx.clone(), &interaction, Err(msg));
+        }
+
         let edit_result =
             guild.edit_member(&ctx.http, user, |mem| mem.nickname(nick)).await;
         cry!(ctx.clone(), &interaction, edit_result);
 
         let response = MessageBuilder::new()
             .push_mono_safe(user.tag())
-            .push(" ")
+            .push(" ")
             .push_mono_safe(old_nick)
             .push(" → ")
             .push_mono_safe(nick)
