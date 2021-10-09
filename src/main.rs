@@ -1,5 +1,5 @@
 use std::env;
-use anyhow::anyhow;
+use anyhow::{anyhow, Result};
 use serenity::{
     prelude::*,
     utils::MessageBuilder,
@@ -8,14 +8,13 @@ use serenity::{
         gateway::Ready,
         interactions::{
             Interaction,
+            ApplicationCommandInteractionDataOption as Option,
             ApplicationCommandInteractionDataOptionValue as OptionValue,
             ApplicationCommandOptionType as OptionType,
             ApplicationCommand as AppCmd,
         },
     },
 };
-
-struct Handler;
 
 macro_rules! how {
     ($e: expr, $($err: tt)*) => {
@@ -26,49 +25,25 @@ macro_rules! how {
     }
 }
 
-impl Handler {
-    async fn handle(
-        &self,
-        ctx: &Context,
-        interaction: &Interaction
-    ) -> anyhow::Result<()> {
-        let guild = how!(&interaction.guild_id, "Couldn't get guild ID")?;
-        let data = how!(&interaction.data, "Couldn't get interaction data")?;
-        let options = &data.options;
+struct InteractionExecutor {
+    ctx: Context,
+    int: Interaction,
+}
 
-        let user_id = match data.name.as_str() {
-            "nick" => {
-                let opt = how!(options.get(0), "Command requires argument #1")?;
-                let opt = how!(&opt.resolved, "Couldn't resolve argument obj")?;
-                match opt {
-                    OptionValue::User(user, _) => user.id,
-                    _ => return Err(anyhow!("Invalid type for argument #1")),
-                }
-            }
-            "ramos" => {
-                UserId::from(331194780916776961u64)
-            }
-            _ => unreachable!(),
-        };
-
-        let nick = how!(options.get(1), "Command requires argument #2")?;
-        let nick = how!(&nick.resolved, "Couldn't resolve argument #2")?;
-        let nick = match nick {
-            OptionValue::String(nick) => nick,
-            _ => return Err(anyhow!("Invalid type for argument #2")),
-        };
-
-        let member = guild.member(&ctx.http, user_id).await?;
+impl InteractionExecutor {
+    async fn set_nick(&self, user: UserId, nick: &str) -> Result<()> {
+        let guild = how!(&self.int.guild_id, "Couldn't get guild ID")?;
+        let member = guild.member(&self.ctx.http, user).await?;
         let tag = member.user.tag();
         let old_nick = &member.nick.unwrap_or(member.user.name);
 
-        if user_id == 285601845957885952u64 {
+        if user == 285601845957885952u64 {
             return Err(anyhow!("Can't fix what's already perfect 🙏"));
-        } else if user_id == ctx.cache.current_user_id().await {
-            guild.edit_nickname(&ctx.http, Some(nick)).await?;
+        } else if user == self.ctx.cache.current_user_id().await {
+            guild.edit_nickname(&self.ctx.http, Some(&nick)).await?;
         } else {
             guild
-                .edit_member(&ctx.http, user_id, |mem| mem.nickname(nick))
+                .edit_member(&self.ctx.http, user, |mem| mem.nickname(nick))
                 .await?;
         }
 
@@ -80,25 +55,76 @@ impl Handler {
             .push_mono_safe(nick)
             .build();
 
-        interaction.create_interaction_response(
-            &ctx.http,
+        self.int.create_interaction_response(
+            &self.ctx.http,
             |res| res.interaction_response_data(|msg| msg.content(&response)),
-        ).await.ok();
+        ).await?;
 
         Ok(())
     }
-}
 
-#[serenity::async_trait]
-impl EventHandler for Handler {
-    async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
-        if let Err(err) = self.handle(&ctx, &interaction).await {
+    async fn cmd_nick(&self, opts: &[Option]) -> Result<()> {
+        let user = match opts.get(0) {
+            Some(Option {
+                resolved: Some(OptionValue::User(user, _)),
+                ..
+            }) => user.id,
+            Some(_) => return Err(anyhow!("Invalid argument #1")),
+            None => return Err(anyhow!("Command requires argument #1")),
+        };
+
+        let nick = match opts.get(1) {
+            Some(Option {
+                resolved: Some(OptionValue::String(nick)),
+                ..
+            }) => nick,
+            Some(_) => return Err(anyhow!("Invalid argument #2")),
+            None => return Err(anyhow!("Command requires argument #2")),
+        };
+
+        self.set_nick(user, nick).await
+    }
+
+    async fn cmd_ramos(&self, opts: &[Option]) -> Result<()> {
+        let nick = match opts.get(0) {
+            Some(Option {
+                resolved: Some(OptionValue::String(nick)),
+                ..
+            }) => nick,
+            Some(_) => return Err(anyhow!("Invalid argument #1")),
+            None => return Err(anyhow!("Command requires argument #1")),
+        };
+
+        self.set_nick(331194780916776961u64.into(), nick).await
+    }
+
+    async fn handle_fallible(&self) -> Result<()> {
+        let data = how!(&self.int.data, "Couldn't get interaction data")?;
+        match data.name.as_str() {
+            "nick" => self.cmd_nick(&data.options[..]).await,
+            "ramos" => self.cmd_ramos(&data.options[..]).await,
+            _ => unreachable!(),
+        }
+    }
+
+    async fn handle(&self) {
+        if let Err(err) = self.handle_fallible().await {
             let emsg = format!("Error: {}", err);
-            interaction.create_interaction_response(
-                ctx.http,
+            self.int.create_interaction_response(
+                &self.ctx.http,
                 |res| res.interaction_response_data(|msg| msg.content(emsg)),
             ).await.ok();
         }
+    }
+}
+
+struct Handler;
+
+#[serenity::async_trait]
+impl EventHandler for Handler {
+    async fn interaction_create(&self, ctx: Context, int: Interaction) {
+        let exe = InteractionExecutor { ctx, int };
+        exe.handle().await;
     }
 
     async fn ready(&self, ctx: Context, ready: Ready) {
