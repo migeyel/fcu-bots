@@ -1,4 +1,5 @@
 use std::env;
+use anyhow::anyhow;
 use serenity::{
     prelude::*,
     utils::MessageBuilder,
@@ -16,45 +17,32 @@ use serenity::{
 
 struct Handler;
 
-macro_rules! fry {
-    ($e: expr) => {
+macro_rules! how {
+    ($e: expr, $($err: tt)*) => {
         match $e {
-            Some(v) => v,
-            None => return,
+            Some(v) => Ok(v),
+            None => Err(anyhow!($($err)*)),
         }
     }
 }
 
-macro_rules! cry {
-    ($ctx: expr, $int: expr, $e: expr) => {
-        match $e {
-            Ok(v) => v,
-            Err(e) => {
-                $int.create_interaction_response($ctx.http, |res| res
-                        .interaction_response_data(|msg| msg
-                            .content(format!("Error: {}", e))))
-                    .await
-                    .ok();
-                return;
-            }
-        }
-    }
-}
-
-#[serenity::async_trait]
-impl EventHandler for Handler {
-    async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
-        let guild = fry!(&interaction.guild_id);
-        let data = fry!(&interaction.data);
+impl Handler {
+    async fn handle(
+        &self,
+        ctx: &Context,
+        interaction: &Interaction
+    ) -> anyhow::Result<()> {
+        let guild = how!(&interaction.guild_id, "Couldn't get guild ID")?;
+        let data = how!(&interaction.data, "Couldn't get interaction data")?;
         let options = &data.options;
 
         let user_id = match data.name.as_str() {
             "nick" => {
-                let opt = fry!(options.get(0));
-                let opt = fry!(&opt.resolved);
+                let opt = how!(options.get(0), "Command requires argument #1")?;
+                let opt = how!(&opt.resolved, "Couldn't resolve argument obj")?;
                 match opt {
                     OptionValue::User(user, _) => user.id,
-                    _ => return,
+                    _ => return Err(anyhow!("Invalid type for argument #1")),
                 }
             }
             "ramos" => {
@@ -63,31 +51,25 @@ impl EventHandler for Handler {
             _ => unreachable!(),
         };
 
-        let nick = fry!(options.get(1));
-        let nick = fry!(&nick.resolved);
+        let nick = how!(options.get(1), "Command requires argument #2")?;
+        let nick = how!(&nick.resolved, "Couldn't resolve argument #2")?;
         let nick = match nick {
             OptionValue::String(nick) => nick,
-            _ => return,
+            _ => return Err(anyhow!("Invalid type for argument #2")),
         };
 
-        let member = guild.member(&ctx.http, user_id).await;
-        let member = cry!(ctx.clone(), &interaction, member);
+        let member = guild.member(&ctx.http, user_id).await?;
         let tag = member.user.tag();
         let old_nick = &member.nick.unwrap_or(member.user.name);
 
         if user_id == 285601845957885952u64 {
-            let msg = "Can't fix what's already perfect 🙏".to_string();
-            cry!(ctx.clone(), &interaction, Err(msg));
-        }
-
-        if user_id == ctx.cache.current_user_id().await {
-            let edit_result = guild.edit_nickname(&ctx.http, Some(nick)).await;
-            cry!(ctx.clone(), &interaction, edit_result);
+            return Err(anyhow!("Can't fix what's already perfect 🙏"));
+        } else if user_id == ctx.cache.current_user_id().await {
+            guild.edit_nickname(&ctx.http, Some(nick)).await?;
         } else {
-            let edit_result = guild
+            guild
                 .edit_member(&ctx.http, user_id, |mem| mem.nickname(nick))
-                .await;
-            cry!(ctx.clone(), &interaction, edit_result);
+                .await?;
         }
 
         let response = MessageBuilder::new()
@@ -98,11 +80,25 @@ impl EventHandler for Handler {
             .push_mono_safe(nick)
             .build();
 
-        interaction.create_interaction_response(&ctx.http, |res| res
-                .interaction_response_data(|msg| msg
-                    .content(&response)))
-            .await
-            .ok();
+        interaction.create_interaction_response(
+            &ctx.http,
+            |res| res.interaction_response_data(|msg| msg.content(&response)),
+        ).await.ok();
+
+        Ok(())
+    }
+}
+
+#[serenity::async_trait]
+impl EventHandler for Handler {
+    async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
+        if let Err(err) = self.handle(&ctx, &interaction).await {
+            let emsg = format!("Error: {}", err);
+            interaction.create_interaction_response(
+                ctx.http,
+                |res| res.interaction_response_data(|msg| msg.content(emsg)),
+            ).await.ok();
+        }
     }
 
     async fn ready(&self, ctx: Context, ready: Ready) {
