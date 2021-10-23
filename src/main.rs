@@ -1,4 +1,4 @@
-use std::env;
+use std::{cell::RefCell, collections::HashMap, env, sync::Mutex};
 use anyhow::{anyhow, Result};
 use serenity::{
     prelude::*,
@@ -25,29 +25,50 @@ macro_rules! how {
     }
 }
 
-struct InteractionExecutor {
-    ctx: Context,
-    int: Interaction,
+struct Handler {
+    combos: Mutex<RefCell<HashMap<GuildId, (UserId, u32)>>>,
 }
 
-impl InteractionExecutor {
-    async fn set_nick(&self, user: UserId, nick: &str) -> Result<()> {
-        let guild = how!(&self.int.guild_id, "Couldn't get guild ID")?;
-        let member = guild.member(&self.ctx.http, user).await?;
+impl Handler {
+    async fn set_nick(
+        &self,
+        ctx: &Context,
+        int: &Interaction,
+        user: UserId,
+        nick: &str,
+    ) -> Result<()> {
+        let guild = how!(&int.guild_id, "Couldn't get guild ID")?;
+        let member = guild.member(&ctx.http, user).await?;
         let tag = member.user.tag();
         let old_nick = &member.nick.unwrap_or(member.user.name);
 
         if user == 285601845957885952u64 {
             return Err(anyhow!("Can't fix what's already perfect 🙏"));
-        } else if user == self.ctx.cache.current_user_id().await {
-            guild.edit_nickname(&self.ctx.http, Some(&nick)).await?;
+        } else if user == ctx.cache.current_user_id().await {
+            guild.edit_nickname(&ctx.http, Some(&nick)).await?;
         } else {
             guild
-                .edit_member(&self.ctx.http, user, |mem| mem.nickname(nick))
+                .edit_member(&ctx.http, user, |mem| mem.nickname(nick))
                 .await?;
         }
 
-        let response = MessageBuilder::new()
+        let mut response_builder = MessageBuilder::new();
+
+        {
+            let mut combos = self.combos.lock().unwrap();
+            let combos = combos.get_mut();
+            let combo = combos.entry(*guild).or_insert((user, 0));
+            if combo.0 == user {
+                combo.1 += 1;
+                if combo.1 >= 2 {
+                    response_builder
+                        .push_bold(format!("{}", combo.1))
+                        .push(" COMBO! ");
+                }
+            }
+        }
+
+        let response = response_builder
             .push_mono_safe(tag)
             .push("  ")
             .push_mono_safe(old_nick)
@@ -55,15 +76,20 @@ impl InteractionExecutor {
             .push_mono_safe(nick)
             .build();
 
-        self.int.create_interaction_response(
-            &self.ctx.http,
+        int.create_interaction_response(
+            &ctx.http,
             |res| res.interaction_response_data(|msg| msg.content(&response)),
         ).await?;
 
         Ok(())
     }
 
-    async fn cmd_nick(&self, opts: &[Option]) -> Result<()> {
+    async fn cmd_nick(
+        &self,
+        ctx: &Context,
+        int: &Interaction,
+        opts: &[Option]
+    ) -> Result<()> {
         let user = match opts.get(0) {
             Some(Option {
                 resolved: Some(OptionValue::User(user, _)),
@@ -82,10 +108,15 @@ impl InteractionExecutor {
             None => return Err(anyhow!("Command requires argument #2")),
         };
 
-        self.set_nick(user, nick).await
+        self.set_nick(ctx, int, user, nick).await
     }
 
-    async fn cmd_ramos(&self, opts: &[Option]) -> Result<()> {
+    async fn cmd_ramos(
+        &self,
+        ctx: &Context,
+        int: &Interaction,
+        opts: &[Option],
+    ) -> Result<()> {
         let nick = match opts.get(0) {
             Some(Option {
                 resolved: Some(OptionValue::String(nick)),
@@ -95,36 +126,33 @@ impl InteractionExecutor {
             None => return Err(anyhow!("Command requires argument #1")),
         };
 
-        self.set_nick(331194780916776961u64.into(), nick).await
+        self.set_nick(ctx, int, 331194780916776961u64.into(), nick).await
     }
 
-    async fn handle_fallible(&self) -> Result<()> {
-        let data = how!(&self.int.data, "Couldn't get interaction data")?;
+    async fn handle_fallible(
+        &self,
+        ctx: &Context,
+        int: &Interaction,
+    ) -> Result<()> {
+        let data = how!(&int.data, "Couldn't get interaction data")?;
         match data.name.as_str() {
-            "nick" => self.cmd_nick(&data.options[..]).await,
-            "ramos" => self.cmd_ramos(&data.options[..]).await,
+            "nick" => self.cmd_nick(ctx, int, &data.options[..]).await,
+            "ramos" => self.cmd_ramos(ctx, int, &data.options[..]).await,
             _ => unreachable!(),
-        }
-    }
-
-    async fn handle(&self) {
-        if let Err(err) = self.handle_fallible().await {
-            let emsg = format!("Error: {}", err);
-            self.int.create_interaction_response(
-                &self.ctx.http,
-                |res| res.interaction_response_data(|msg| msg.content(emsg)),
-            ).await.ok();
         }
     }
 }
 
-struct Handler;
-
 #[serenity::async_trait]
 impl EventHandler for Handler {
     async fn interaction_create(&self, ctx: Context, int: Interaction) {
-        let exe = InteractionExecutor { ctx, int };
-        exe.handle().await;
+        if let Err(err) = self.handle_fallible(&ctx, &int).await {
+            let emsg = format!("Error: {}", err);
+            int.create_interaction_response(
+                ctx.http,
+                |res| res.interaction_response_data(|msg| msg.content(emsg)),
+            ).await.ok();
+        }
     }
 
     async fn ready(&self, ctx: Context, ready: Ready) {
@@ -162,8 +190,12 @@ async fn main() -> anyhow::Result<()> {
     let application_id: u64 = env::var("APPLICATION_ID")?.parse()?;
     let token = env::var("DISCORD_TOKEN")?;
 
+    let handler = Handler {
+        combos: Mutex::new(RefCell::new(HashMap::new())),
+    };
+
     let mut client = Client::builder(token)
-        .event_handler(Handler)
+        .event_handler(handler)
         .application_id(application_id)
         .await?;
 
