@@ -7,7 +7,7 @@ edition = "2021"
 version = "1.0.51"
 
 [dependencies.serenity]
-version = "=0.10.7"
+version = "=0.10.9"
 default-features = false
 features = [
     "client", "gateway", "rustls_backend", "model", "unstable_discord_api",

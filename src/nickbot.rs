@@ -7,10 +7,13 @@ use serenity::{
         gateway::Ready,
         interactions::{
             Interaction,
-            ApplicationCommandInteractionDataOption as Option,
-            ApplicationCommandInteractionDataOptionValue as OptionValue,
-            ApplicationCommandOptionType as OptionType,
-            ApplicationCommand as AppCmd,
+            application_command::{
+                ApplicationCommandInteractionDataOption as Option,
+                ApplicationCommandInteractionDataOptionValue as OptionValue,
+                ApplicationCommandOptionType as OptionType,
+                ApplicationCommand as AppCmd,
+                ApplicationCommandInteraction as ACInt,
+            },
         },
     },
 };
@@ -30,7 +33,7 @@ impl Handler {
     async fn set_nick(
         &self,
         ctx: &Context,
-        int: &Interaction,
+        int: &ACInt,
         user: UserId,
         nick: &str,
     ) -> Result<()> {
@@ -42,7 +45,7 @@ impl Handler {
         if user == 285601845957885952u64 {
             return Err(anyhow!("Can't fix what's already perfect 🙏"));
         } else if user == ctx.cache.current_user_id().await {
-            guild.edit_nickname(&ctx.http, Some(&nick)).await?;
+            guild.edit_nickname(&ctx.http, Some(nick)).await?;
         } else {
             guild
                 .edit_member(&ctx.http, user, |mem| mem.nickname(nick))
@@ -57,18 +60,13 @@ impl Handler {
             .push_mono_safe(nick)
             .build();
 
-        int.create_interaction_response(
-            &ctx.http,
-            |res| res.interaction_response_data(|msg| msg.content(&response)),
-        ).await?;
-
-        Ok(())
+        self.response(ctx, int, &response).await
     }
 
     async fn cmd_nick(
         &self,
         ctx: &Context,
-        int: &Interaction,
+        int: &ACInt,
         opts: &[Option]
     ) -> Result<()> {
         let user = match opts.get(0) {
@@ -95,7 +93,7 @@ impl Handler {
     async fn cmd_ramos(
         &self,
         ctx: &Context,
-        int: &Interaction,
+        int: &ACInt,
         opts: &[Option],
     ) -> Result<()> {
         let nick = match opts.get(0) {
@@ -113,26 +111,37 @@ impl Handler {
     async fn handle_fallible(
         &self,
         ctx: &Context,
-        int: &Interaction,
+        int: &ACInt,
     ) -> Result<()> {
-        let data = how!(&int.data, "Couldn't get interaction data")?;
-        match data.name.as_str() {
-            "nick" => self.cmd_nick(ctx, int, &data.options[..]).await,
-            "ramos" => self.cmd_ramos(ctx, int, &data.options[..]).await,
+        match int.data.name.as_str() {
+            "nick" => self.cmd_nick(ctx, int, &int.data.options[..]).await,
+            "ramos" => self.cmd_ramos(ctx, int, &int.data.options[..]).await,
             _ => unreachable!(),
         }
+    }
+
+    async fn response(
+        &self,
+        ctx: &Context,
+        int: &ACInt,
+        response: &str
+    ) -> Result<()> {
+        int.create_interaction_response(
+            &ctx.http,
+            |res| res.interaction_response_data(|msg| msg.content(response)),
+        ).await.map_err(|e| e.into())
     }
 }
 
 #[serenity::async_trait]
 impl EventHandler for Handler {
     async fn interaction_create(&self, ctx: Context, int: Interaction) {
-        if let Err(err) = self.handle_fallible(&ctx, &int).await {
-            let emsg = format!("Error: {}", err);
-            int.create_interaction_response(
-                ctx.http,
-                |res| res.interaction_response_data(|msg| msg.content(emsg)),
-            ).await.ok();
+        if let Interaction::ApplicationCommand(int) = int {
+            if let Err(err) = self.handle_fallible(&ctx, &int).await {
+                self.response(&ctx, &int, &format!("Error: {}", err))
+                    .await
+                    .ok();
+            }
         }
     }
 
