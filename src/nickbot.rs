@@ -42,7 +42,7 @@ impl Handler {
         let tag = member.user.tag();
         let old_nick = &member.nick.unwrap_or(member.user.name);
 
-        if user == 285601845957885952u64 {
+        if user == UserId(285601845957885952) {
             return Err(anyhow!("Can't fix what's already perfect 🙏"));
         } else if user == ctx.cache.current_user_id().await {
             guild.edit_nickname(&ctx.http, Some(nick)).await?;
@@ -63,13 +63,8 @@ impl Handler {
         self.response(ctx, int, &response).await
     }
 
-    async fn cmd_nick(
-        &self,
-        ctx: &Context,
-        int: &ACInt,
-        opts: &[Option]
-    ) -> Result<()> {
-        let user = match opts.get(0) {
+    async fn cmd_nick(&self, ctx: &Context, int: &ACInt) -> Result<()> {
+        let user = match int.data.options.get(0) {
             Some(Option {
                 resolved: Some(OptionValue::User(user, _)),
                 ..
@@ -78,7 +73,7 @@ impl Handler {
             None => return Err(anyhow!("Command requires argument #1")),
         };
 
-        let nick = match opts.get(1) {
+        let nick = match int.data.options.get(1) {
             Some(Option {
                 resolved: Some(OptionValue::String(nick)),
                 ..
@@ -87,16 +82,11 @@ impl Handler {
             None => return Err(anyhow!("Command requires argument #2")),
         };
 
-        self.set_nick(ctx, int, user, nick).await
+        self.set_nick(ctx, int, user, &nick).await
     }
 
-    async fn cmd_ramos(
-        &self,
-        ctx: &Context,
-        int: &ACInt,
-        opts: &[Option],
-    ) -> Result<()> {
-        let nick = match opts.get(0) {
+    async fn cmd_ramos(&self, ctx: &Context, int: &ACInt) -> Result<()> {
+        let nick = match int.data.options.get(0) {
             Some(Option {
                 resolved: Some(OptionValue::String(nick)),
                 ..
@@ -105,18 +95,18 @@ impl Handler {
             None => return Err(anyhow!("Command requires argument #1")),
         };
 
-        self.set_nick(ctx, int, 331194780916776961u64.into(), nick).await
+        self.set_nick(ctx, int, UserId(331194780916776961), nick).await
     }
 
-    async fn handle_fallible(
-        &self,
-        ctx: &Context,
-        int: &ACInt,
-    ) -> Result<()> {
-        match int.data.name.as_str() {
-            "nick" => self.cmd_nick(ctx, int, &int.data.options[..]).await,
-            "ramos" => self.cmd_ramos(ctx, int, &int.data.options[..]).await,
+    async fn handle_fallible(&self, ctx: &Context, int: &ACInt) {
+        let result = match int.data.name.as_str() {
+            "nick" => self.cmd_nick(ctx, int).await,
+            "ramos" => self.cmd_ramos(ctx, int).await,
             _ => unreachable!(),
+        };
+
+        if let Err(err) = result {
+            self.response(&ctx, &int, &format!("Error: {}", err)).await.ok();
         }
     }
 
@@ -137,11 +127,7 @@ impl Handler {
 impl EventHandler for Handler {
     async fn interaction_create(&self, ctx: Context, int: Interaction) {
         if let Interaction::ApplicationCommand(int) = int {
-            if let Err(err) = self.handle_fallible(&ctx, &int).await {
-                self.response(&ctx, &int, &format!("Error: {}", err))
-                    .await
-                    .ok();
-            }
+            self.handle_fallible(&ctx, &int).await;
         }
     }
 
