@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, env, sync::Mutex};
+use std::env;
 use anyhow::{anyhow, Result};
 use serenity::{
     prelude::*,
@@ -25,9 +25,7 @@ macro_rules! how {
     }
 }
 
-struct Handler {
-    combos: Mutex<RefCell<HashMap<GuildId, (UserId, u32)>>>,
-}
+struct Handler;
 
 impl Handler {
     async fn set_nick(
@@ -52,23 +50,7 @@ impl Handler {
                 .await?;
         }
 
-        let mut response_builder = MessageBuilder::new();
-
-        {
-            let mut combos = self.combos.lock().unwrap();
-            let combos = combos.get_mut();
-            let combo = combos.entry(*guild).or_insert((user, 0));
-            if combo.0 == user {
-                combo.1 += 1;
-                if combo.1 >= 2 {
-                    response_builder
-                        .push_bold(format!("{}", combo.1))
-                        .push(" COMBO! ");
-                }
-            }
-        }
-
-        let response = response_builder
+        let response = MessageBuilder::new()
             .push_mono_safe(tag)
             .push("  ")
             .push_mono_safe(old_nick)
@@ -190,9 +172,7 @@ async fn main() -> anyhow::Result<()> {
     let application_id: u64 = env::var("APPLICATION_ID")?.parse()?;
     let token = env::var("DISCORD_TOKEN")?;
 
-    let handler = Handler {
-        combos: Mutex::new(RefCell::new(HashMap::new())),
-    };
+    let handler = Handler;
 
     let mut client = Client::builder(token)
         .event_handler(handler)
