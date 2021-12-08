@@ -1,13 +1,13 @@
 [package]
 name = "neo-nickbot"
 version = "0.1.0"
-edition = "2018"
+edition = "2021"
 
 [dependencies.anyhow]
-version = "1.0.40"
+version = "1.0.51"
 
 [dependencies.serenity]
-version = "0.10.7"
+version = "=0.10.7"
 default-features = false
 features = [
     "client", "gateway", "rustls_backend", "model", "unstable_discord_api",
@@ -15,5 +15,5 @@ features = [
 ]
 
 [dependencies.tokio]
-version = "1.6.0"
+version = "1.14.0"
 features = ["full"]
