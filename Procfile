@@ -1,1 +1,1 @@
-bot: ./target/release/neo-nickbot
+bot: ./target/release/fcu-bots
