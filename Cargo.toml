@@ -3,9 +3,6 @@ name = "fcu-bots"
 version = "0.1.0"
 edition = "2021"
 
-[dependencies]
-dotenvy = "0.15.6"
-
 [dependencies.anyhow]
 version = "1.0.66"
 
