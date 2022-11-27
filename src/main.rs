@@ -1,10 +1,10 @@
 mod nickbot;
 use nickbot::Handler;
 
-use std::env;
 use anyhow::Result;
-use serenity::Client;
 use serenity::model::prelude::*;
+use serenity::Client;
+use std::env;
 
 #[tokio::main]
 async fn main() -> Result<()> {

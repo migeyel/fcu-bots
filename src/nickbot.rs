@@ -1,20 +1,20 @@
 use anyhow::{anyhow, Result};
 use serenity::{
-    prelude::*,
-    utils::MessageBuilder,
     model::{
-        prelude::*,
         gateway::Ready,
         interactions::{
-            Interaction,
             application_command::{
+                ApplicationCommandInteraction as ACInt,
                 ApplicationCommandInteractionDataOption as Option,
                 ApplicationCommandInteractionDataOptionValue as OptionValue,
                 ApplicationCommandOptionType as OptionType,
-                ApplicationCommandInteraction as ACInt,
             },
+            Interaction,
         },
+        prelude::*,
     },
+    prelude::*,
+    utils::MessageBuilder,
 };
 
 macro_rules! how {
@@ -33,7 +33,10 @@ pub struct Handler {
 
 impl Handler {
     pub fn new(guild_id: GuildId, fanclub_role: RoleId) -> Self {
-        Self { guild_id, fanclub_role }
+        Self {
+            guild_id,
+            fanclub_role,
+        }
     }
 
     async fn set_nick(
@@ -88,7 +91,7 @@ impl Handler {
             None => return Err(anyhow!("Command requires argument #2")),
         };
 
-        self.set_nick(ctx, int, user, &nick).await
+        self.set_nick(ctx, int, user, nick).await
     }
 
     async fn cmd_ramos(&self, ctx: &Context, int: &ACInt) -> Result<()> {
@@ -101,7 +104,8 @@ impl Handler {
             None => return Err(anyhow!("Command requires argument #1")),
         };
 
-        self.set_nick(ctx, int, UserId(331194780916776961), nick).await
+        self.set_nick(ctx, int, UserId(331194780916776961), nick)
+            .await
     }
 
     async fn cmd_join(&self, ctx: &Context, int: &ACInt) -> Result<()> {
@@ -117,9 +121,9 @@ impl Handler {
             .push(" joined the fan club.")
             .build();
 
-        int.create_interaction_response(&ctx.http, |r| r
-            .interaction_response_data(|m| m
-                .content(&response)))
+        int.create_interaction_response(&ctx.http, |r| {
+            r.interaction_response_data(|m| m.content(&response))
+        })
         .await?;
 
         Ok(())
@@ -138,9 +142,9 @@ impl Handler {
             .push(" left the fan club.")
             .build();
 
-        int.create_interaction_response(&ctx.http, |r| r
-            .interaction_response_data(|m| m
-                .content(&response)))
+        int.create_interaction_response(&ctx.http, |r| {
+            r.interaction_response_data(|m| m.content(&response))
+        })
         .await?;
 
         Ok(())
@@ -156,7 +160,9 @@ impl Handler {
         };
 
         if let Err(err) = result {
-            self.response(&ctx, &int, &format!("Error: {}", err)).await.ok();
+            self.response(ctx, int, &format!("Error: {}", err))
+                .await
+                .ok();
         }
     }
 
@@ -164,12 +170,13 @@ impl Handler {
         &self,
         ctx: &Context,
         int: &ACInt,
-        response: &str
+        response: &str,
     ) -> Result<()> {
-        int.create_interaction_response(
-            &ctx.http,
-            |res| res.interaction_response_data(|msg| msg.content(response)),
-        ).await.map_err(|e| e.into())
+        int.create_interaction_response(&ctx.http, |res| {
+            res.interaction_response_data(|msg| msg.content(response))
+        })
+        .await
+        .map_err(|e| e.into())
     }
 }
 
@@ -184,39 +191,52 @@ impl EventHandler for Handler {
     async fn ready(&self, ctx: Context, ready: Ready) {
         println!("{} is connected!", ready.user.name);
 
-        self.guild_id.create_application_command(&ctx.http, |cmd| cmd
-                .name("nick")
-                .description("Set a user's nickname")
-                .create_option(|opt| opt
-                    .name("user")
-                    .description("The user to set nickname")
-                    .kind(OptionType::User)
-                    .required(true))
-                .create_option(|opt| opt
-                    .name("nickname")
-                    .description("The nickname to set")
-                    .kind(OptionType::String)
-                    .required(true)))
-            .await.unwrap();
+        self.guild_id
+            .create_application_command(&ctx.http, |cmd| {
+                cmd.name("nick")
+                    .description("Set a user's nickname")
+                    .create_option(|opt| {
+                        opt.name("user")
+                            .description("The user to set nickname")
+                            .kind(OptionType::User)
+                            .required(true)
+                    })
+                    .create_option(|opt| {
+                        opt.name("nickname")
+                            .description("The nickname to set")
+                            .kind(OptionType::String)
+                            .required(true)
+                    })
+            })
+            .await
+            .unwrap();
 
-        self.guild_id.create_application_command(&ctx.http, |cmd| cmd
-                .name("ramos")
-                .description("Set Ramos' nickname")
-                .create_option(|opt| opt
-                    .name("nickname")
-                    .description("The nickname to set")
-                    .kind(OptionType::String)
-                    .required(true)))
-            .await.unwrap();
+        self.guild_id
+            .create_application_command(&ctx.http, |cmd| {
+                cmd.name("ramos")
+                    .description("Set Ramos' nickname")
+                    .create_option(|opt| {
+                        opt.name("nickname")
+                            .description("The nickname to set")
+                            .kind(OptionType::String)
+                            .required(true)
+                    })
+            })
+            .await
+            .unwrap();
 
-        self.guild_id.create_application_command(&ctx.http, |cmd| cmd
-                .name("join")
-                .description("Joins the fanclub."))
-            .await.unwrap();
-    
-        self.guild_id.create_application_command(&ctx.http, |cmd| cmd
-                .name("leave")
-                .description("Leaves the fanclub."))
-            .await.unwrap();
+        self.guild_id
+            .create_application_command(&ctx.http, |cmd| {
+                cmd.name("join").description("Joins the fanclub.")
+            })
+            .await
+            .unwrap();
+
+        self.guild_id
+            .create_application_command(&ctx.http, |cmd| {
+                cmd.name("leave").description("Leaves the fanclub.")
+            })
+            .await
+            .unwrap();
     }
 }
