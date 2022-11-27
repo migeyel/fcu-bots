@@ -11,7 +11,6 @@ use serenity::{
                 ApplicationCommandInteractionDataOption as Option,
                 ApplicationCommandInteractionDataOptionValue as OptionValue,
                 ApplicationCommandOptionType as OptionType,
-                ApplicationCommand as AppCmd,
                 ApplicationCommandInteraction as ACInt,
             },
         },
@@ -27,9 +26,16 @@ macro_rules! how {
     }
 }
 
-pub struct Handler;
+pub struct Handler {
+    guild_id: GuildId,
+    fanclub_role: RoleId,
+}
 
 impl Handler {
+    pub fn new(guild_id: GuildId, fanclub_role: RoleId) -> Self {
+        Self { guild_id, fanclub_role }
+    }
+
     async fn set_nick(
         &self,
         ctx: &Context,
@@ -98,10 +104,54 @@ impl Handler {
         self.set_nick(ctx, int, UserId(331194780916776961), nick).await
     }
 
+    async fn cmd_join(&self, ctx: &Context, int: &ACInt) -> Result<()> {
+        let mut member = match int.member.clone() {
+            Some(member) => member,
+            None => return Err(anyhow!("Not on a guild")),
+        };
+
+        member.add_role(&ctx.http, self.fanclub_role).await?;
+
+        let response = MessageBuilder::new()
+            .push_mono_safe(&member.nick.unwrap_or(member.user.name))
+            .push(" joined the fan club.")
+            .build();
+
+        int.create_interaction_response(&ctx.http, |r| r
+            .interaction_response_data(|m| m
+                .content(&response)))
+        .await?;
+
+        Ok(())
+    }
+
+    async fn cmd_leave(&self, ctx: &Context, int: &ACInt) -> Result<()> {
+        let mut member = match int.member.clone() {
+            Some(member) => member,
+            None => return Err(anyhow!("Not on a guild")),
+        };
+
+        member.remove_role(&ctx.http, self.fanclub_role).await?;
+
+        let response = MessageBuilder::new()
+            .push_mono_safe(&member.nick.unwrap_or(member.user.name))
+            .push(" left the fan club.")
+            .build();
+
+        int.create_interaction_response(&ctx.http, |r| r
+            .interaction_response_data(|m| m
+                .content(&response)))
+        .await?;
+
+        Ok(())
+    }
+
     async fn handle_fallible(&self, ctx: &Context, int: &ACInt) {
         let result = match int.data.name.as_str() {
             "nick" => self.cmd_nick(ctx, int).await,
             "ramos" => self.cmd_ramos(ctx, int).await,
+            "join" => self.cmd_join(ctx, int).await,
+            "leave" => self.cmd_leave(ctx, int).await,
             _ => unreachable!(),
         };
 
@@ -134,7 +184,7 @@ impl EventHandler for Handler {
     async fn ready(&self, ctx: Context, ready: Ready) {
         println!("{} is connected!", ready.user.name);
 
-        AppCmd::create_global_application_command(&ctx.http, |cmd| cmd
+        self.guild_id.create_application_command(&ctx.http, |cmd| cmd
                 .name("nick")
                 .description("Set a user's nickname")
                 .create_option(|opt| opt
@@ -149,7 +199,7 @@ impl EventHandler for Handler {
                     .required(true)))
             .await.unwrap();
 
-        AppCmd::create_global_application_command(&ctx.http, |cmd| cmd
+        self.guild_id.create_application_command(&ctx.http, |cmd| cmd
                 .name("ramos")
                 .description("Set Ramos' nickname")
                 .create_option(|opt| opt
@@ -157,6 +207,16 @@ impl EventHandler for Handler {
                     .description("The nickname to set")
                     .kind(OptionType::String)
                     .required(true)))
+            .await.unwrap();
+
+        self.guild_id.create_application_command(&ctx.http, |cmd| cmd
+                .name("join")
+                .description("Joins the fanclub."))
+            .await.unwrap();
+    
+        self.guild_id.create_application_command(&ctx.http, |cmd| cmd
+                .name("leave")
+                .description("Leaves the fanclub."))
             .await.unwrap();
     }
 }

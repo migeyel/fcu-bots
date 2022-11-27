@@ -4,17 +4,19 @@ use nickbot::Handler;
 use std::env;
 use anyhow::Result;
 use serenity::Client;
+use serenity::model::prelude::*;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let application_id: u64 = env::var("APPLICATION_ID")?.parse()?;
-    let token = env::var("DISCORD_TOKEN")?;
+    let nickbot_appid: u64 = env::var("APPLICATION_ID")?.parse()?;
+    let nickbot_guildid = GuildId(env::var("NICKBOT_GUILDID")?.parse()?);
+    let nickbot_fcid = RoleId(env::var("NICKBOT_ROLEID")?.parse()?);
+    let nickbot_token = env::var("DISCORD_TOKEN")?;
 
-    let handler = Handler;
-
-    let mut client = Client::builder(token)
+    let handler = Handler::new(nickbot_guildid, nickbot_fcid);
+    let mut client = Client::builder(nickbot_token)
         .event_handler(handler)
-        .application_id(application_id)
+        .application_id(nickbot_appid)
         .await?;
 
     client.start().await?;
