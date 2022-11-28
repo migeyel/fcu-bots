@@ -8,8 +8,6 @@ use std::env;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    dotenvy::dotenv().ok();
-
     let nickbot_appid: u64 = env::var("APPLICATION_ID")?.parse()?;
     let nickbot_guildid = GuildId(env::var("NICKBOT_GUILDID")?.parse()?);
     let nickbot_fcid = RoleId(env::var("NICKBOT_ROLEID")?.parse()?);
